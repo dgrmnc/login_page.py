@@ -1,6 +1,8 @@
 import os
 import re
 import csv
+from cryptography.fernet import Fernet
+
 
 class LoginPage:
 
@@ -8,6 +10,9 @@ class LoginPage:
     email_max_length = 20
     password_min_length = 10
     special_characters = [chr(i) for i in range(32, 127) if not chr(i).isalnum()]
+
+    key = b'YOUR KEY'
+    
 
     def __init__(self):
      self.users = self.load_data(LoginPage.user_file)
@@ -43,6 +48,55 @@ class LoginPage:
             return True
         else:
            return False
+  
+    @classmethod
+    def encrypted_psw(cls, password):
+        """şifreyi şifreler"""
+        cipher_suite = Fernet(cls.key)
+        encrypted_password = cipher_suite.encrypt(password.encode()).decode()
+        return encrypted_password
+    
+    @classmethod
+    def decrypted_psw(cls, encrypted_password):
+        """şifreyi çözer"""
+        cipher_suite = Fernet(cls.key)
+        decrypted_password = cipher_suite.decrypt(encrypted_password.encode()).decode()
+        return decrypted_password
+    
+    def register_user(self, new_email, new_password):
+        """yeni kullanıcı kaydı"""
+
+        encrypted_password = self.encrypted_psw(new_password)
+        new_user = {
+            "id":str(self.get_id()),
+            "email": new_email,
+            "password": encrypted_password
+        }
+
+        self.users.append(new_user)
+        self.save_data(LoginPage.user_file, self.users)
+        print("Yeni üye kaydı tamamlanmıştır. Giriş yapabilirsiniz.")
+
+    @classmethod
+    def show_decode_password(cls):
+        """ csv dos. şifreli şifreleri çözer ve ekrana basar"""
+        cipher_suite = Fernet(cls.key)
+        try:
+            with open(cls.user_file, 'r', newline='') as file:
+                reader = csv.DictReader(file)
+                print("\n>>>Kayıtlı Kullanıcılar ve gerçek şifreleri<<<\n")
+                for row in reader:
+                    email = row['email']
+                    encrypted_password = row['password'].encode()
+                    try:
+                        decrypted_password = cipher_suite.decrypt(encrypted_password).decode()
+                    except Exception as e:
+                        decrypted_password = f"Hata: {str(e)}"
+                    print(f"Email: {email} | Şifre: {decrypted_password}")
+        except FileNotFoundError:
+            print("CSV dosyası bulunamadı.")
+        except Exception as  e:
+            print(f"{e}")
 
     def get_id(self):
         """mevcut en yüksek ID bulur ve bir sonrakini yeni girişe yazar"""
@@ -55,9 +109,10 @@ class LoginPage:
            email = input("Email adresinizi giriniz: ").lower()
            user = next((u for u in self.users if u["email"] == email), None) # email kullanıcılarda arayacak
            if user:
+                decrypted_password = self.decrypted_psw(user['password'])
                 while True:
-                    password = input('Lütfen şifrenizi giriniz: ')
-                    if user['password'] == password:
+                    input_psw = input('Lütfen şifrenizi giriniz: ')
+                    if input_psw == decrypted_password:
                         print("Giriş başarılı..")
                         break
                     else:
@@ -73,26 +128,26 @@ class LoginPage:
                         while True:
                             new_password = input("Lütfen şifrenizi belirleyiniz:" )
                             if self.is_valid_password(new_password):
-                                new_user = {
-                                    "id": str(self.get_id()),
-                                    "email": new_email,
-                                    "password": new_password
-                                }
-                                self.users.append(new_user)
-
-                                self.save_data(LoginPage.user_file, self.users)
-                                print("Yeni üye kaydı tamamlanmıştır. Giriş yapabilirsiniz.")
+                                self.register_user(new_email, new_password)
                                 break
                             else:
                                 print("Şifreniz geçerli değil, lütfen geçerli bir şifre girin.")
-                else:
-                    print("Email zaten mevcut")
         except ValueError as e:
             print(f"hatalı işlem : {e}")
 
 def main():
     g = LoginPage()
-    g.login()
+    try:
+        while True:
+            print("\n1: Giriş ekranına aktarma")
+            print("2: Şifreleri görme")
+            do_what = input("Yapmak istediğiniz işlem türünü seçin?(1 - 2): ")
+            if do_what == "1":
+                g.login()
+            else:
+                g.show_decode_password()
+    except ValueError as e:
+        print("f{e}")
 
 if __name__ == '__main__':
     main()
